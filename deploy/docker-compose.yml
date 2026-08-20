@@ -1,0 +1,52 @@
+# Déploiement cloud privé — une Elastic IP sur le port 80 (nginx)
+# Usage : cp .env.example .env && éditer .env puis : docker compose up -d --build
+
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: sqlite:////data/maintenance_reports.db
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    volumes:
+      - ommp-db:/data
+    networks:
+      - app
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        # Laisser vide : le navigateur appelle /api sur la même IP (via nginx → Next rewrite → backend)
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+    restart: unless-stopped
+    environment:
+      BACKEND_PROXY_URL: http://backend:8000
+    depends_on:
+      - backend
+    networks:
+      - app
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - app
+
+volumes:
+  ommp-db:
+
+networks:
+  app:

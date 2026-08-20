@@ -1,0 +1,35 @@
+# v0 / sandbox internals
+__v0_runtime_loader.js
+__v0_devtools.tsx
+__v0_jsx-dev-runtime.ts
+.snowflake/
+.v0-trash/
+.vercel/
+next.user-config.*
+
+# Env
+.env
+.env*.local
+
+# OS
+.DS_Store
+
+# Frontend (Next.js) — dossier projet
+frontend/node_modules/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+
+# Backend (Python / SQLite locale)
+backend/.venv/
+backend/venv/
+backend/__pycache__/
+*.pyc
+backend/maintenance_reports.db
+
+# Compteur références PREV (Next.js parse-text)
+frontend/data/prev-intervention-seq.json
+
+# Racine : anciens artefacts si présents
+node_modules/
+.next/
+venv/
