@@ -52,21 +52,32 @@ def _chat_api_key_for_client() -> str:
     return ""
 
 
-# Modèles de repli si OPENAI_MODEL est obsolète (ex. Groq « decommissioned »)
+# Modèles de repli si OPENAI_MODEL est obsolète (ex. Groq « decommissioned » / model_not_found)
 _GROQ_FALLBACK_MODELS = (
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "gemma2-9b-it",
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
+    "qwen/qwen3.8-27b",
 )
 
 
 def _chat_model() -> str:
-    return (os.getenv("OPENAI_MODEL") or "gpt-4o-mini").strip()
+    configured = (os.getenv("OPENAI_MODEL") or "").strip()
+    if configured:
+        return configured
+    if "groq.com" in _chat_base_url():
+        return "openai/gpt-oss-20b"
+    return "gpt-4o-mini"
 
 
-def _is_model_decommissioned(exc: Exception) -> bool:
+def _is_model_unavailable(exc: Exception) -> bool:
     msg = str(exc).lower()
-    return "decommissioned" in msg or "model_decommissioned" in msg
+    return (
+        "decommissioned" in msg
+        or "model_decommissioned" in msg
+        or "model_not_found" in msg
+        or "does not exist" in msg
+        or "do not have access" in msg
+    )
 
 
 def _chat_completion_with_fallback(
@@ -98,9 +109,9 @@ def _chat_completion_with_fallback(
             )
         except Exception as e:
             last_exc = e
-            if _is_model_decommissioned(e):
+            if _is_model_unavailable(e):
                 print(
-                    f"[WARNING] Modèle {model!r} retiré par le fournisseur — essai suivant."
+                    f"[WARNING] Modèle {model!r} indisponible — essai suivant."
                 )
                 continue
             raise
@@ -271,7 +282,6 @@ def fallback_parse(text: str, db: Session) -> dict[str, Any]:
         "client_name": "Organisme inconnu",
         "location": "Lieu inconnu",
         "date": datetime.utcnow().isoformat(),
-        "technician": "Technicien inconnu",
         "tasks": [],
         "notes": "",
         "executive_summary": (
@@ -329,7 +339,8 @@ def fallback_parse(text: str, db: Session) -> dict[str, Any]:
         elif (
             "technicien" in ll or "ingenieur" in ll or "engineer" in ll
         ) and ":" in line:
-            out["technician"] = line.split(":", 1)[-1].strip() or out["technician"]
+            # Ignore legacy technician lines — field removed
+            pass
         elif line.strip().startswith(("-", "*")) or re.match(r"^\d+[\).\s]", line):
             td = re.sub(r"^[-*]\s*", "", line)
             td = re.sub(r"^\d+[\).\s]+\s*", "", td).strip()
@@ -374,7 +385,6 @@ def post_traiter_parse(raw: dict[str, Any], db: Session) -> dict[str, Any]:
         "client_name": raw.get("client_name") or "Organisme inconnu",
         "location": raw.get("location") or "Lieu inconnu",
         "date": raw.get("date") or datetime.utcnow().isoformat(),
-        "technician": raw.get("technician") or "Technicien inconnu",
         "tasks": raw.get("tasks") if isinstance(raw.get("tasks"), list) else [],
         "notes": raw.get("notes") or "",
         "executive_summary": raw.get("executive_summary") or raw.get("resume") or "",
@@ -481,7 +491,7 @@ Ne fournissez AUCUNE explication, seulement l’JSON.
 Texte utilisateur brut :
 {text.strip()}
 
-Retournez UNIQUEMENT un objet JSON UTF-8 valide ayant précisément les clés : client_name, location, date, technician, tasks, notes, executive_summary, resume, findings, recommendations, problemes_et_recommandations (chaîne peut être vide), port_name, project_title, objectif_intervention, reference_intervention_suggeree"""
+Retournez UNIQUEMENT un objet JSON UTF-8 valide ayant précisément les clés : client_name, location, date, tasks, notes, executive_summary, resume, findings, recommendations, problemes_et_recommandations (chaîne peut être vide), port_name, project_title, objectif_intervention, reference_intervention_suggeree"""
 
     try:
         completion = _chat_completion_with_fallback(

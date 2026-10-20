@@ -50,7 +50,6 @@ class ClientWithReports(Client):
 # Report schemas
 class ReportBase(BaseModel):
     date: datetime
-    technician_name: str
     location: str
     notes: Optional[str] = None
     signature: Optional[str] = None
@@ -58,10 +57,11 @@ class ReportBase(BaseModel):
 class ReportCreate(ReportBase):
     client_name: str
     tasks: List[TaskCreate]
+    # Optional: use an already-allocated PREV_MMM_YYYY_NN instead of generating a new one.
+    report_id: Optional[str] = None
 
 class ReportUpdate(BaseModel):
     date: Optional[datetime] = None
-    technician_name: Optional[str] = None
     location: Optional[str] = None
     notes: Optional[str] = None
     signature: Optional[str] = None
@@ -159,6 +159,24 @@ class PortResponse(BaseModel):
     contractRef: str
     siteContacts: List[PortContactItem]
     interventionContacts: List[PortContactItem]
+
+
+# Intervention objectives (catalogue /manage)
+class ObjectiveCreate(BaseModel):
+    text: str
+
+
+class ObjectiveUpdate(BaseModel):
+    text: Optional[str] = None
+
+
+class ObjectiveResponse(BaseModel):
+    id: int
+    text: str
+    sort_order: int = 0
+
+    class Config:
+        from_attributes = True
 
 
 # Stats schemas

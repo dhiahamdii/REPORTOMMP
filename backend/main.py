@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List
 
-from models import init_db, get_db, Client, Report, Task, Port, PortContact
+from models import init_db, get_db, Client, Report, Task, Port, PortContact, InterventionObjective
 from schemas import (
     ClientCreate, ClientUpdate, Client as ClientSchema,
     ReportCreate, ReportUpdate, Report as ReportSchema, ReportWithClient,
@@ -27,6 +27,7 @@ from schemas import (
     ReportStats,
     PortCreate, PortUpdate, PortResponse,
     PortContactCreate, PortContactUpdate, PortContactItem,
+    ObjectiveCreate, ObjectiveUpdate, ObjectiveResponse,
 )
 from ports_service import (
     get_port_by_slug,
@@ -128,8 +129,8 @@ def delete_client(client_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/reports", response_model=List[ReportWithClient])
 def list_reports(db: Session = Depends(get_db)):
-    """List all reports."""
-    reports = db.query(Report).all()
+    """List all reports (newest first)."""
+    reports = db.query(Report).order_by(Report.created_at.desc()).all()
     return reports
 
 @app.post("/api/reports", response_model=ReportSchema)
@@ -145,15 +146,21 @@ def create_report(report: ReportCreate, db: Session = Depends(get_db)):
         db.add(client)
         db.flush()  # Flush to get the client ID
     
-    # Generate unique report ID
-    report_id = generate_report_id(db)
+    # Use provided PREV ref when already allocated (form / AI), else generate
+    requested = (report.report_id or "").strip()
+    if requested:
+        existing = db.query(Report).filter(Report.report_id == requested).first()
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Report ID already exists: {requested}")
+        report_id = requested
+    else:
+        report_id = generate_report_id(db)
     
     # Create report
     db_report = Report(
         report_id=report_id,
         client_id=client.id,
         date=report.date,
-        technician_name=report.technician_name,
         location=report.location,
         notes=report.notes,
         signature=report.signature
@@ -365,6 +372,59 @@ def delete_port_contact(slug: str, contact_id: int, db: Session = Depends(get_db
     db.delete(contact)
     db.commit()
     return {"message": "Contact deleted successfully"}
+
+
+# ============================================================================
+# INTERVENTION OBJECTIVES (catalogue)
+# ============================================================================
+
+@app.get("/api/objectives", response_model=List[ObjectiveResponse])
+def list_objectives(db: Session = Depends(get_db)):
+    """Liste les objectifs d'intervention du catalogue."""
+    rows = (
+        db.query(InterventionObjective)
+        .order_by(InterventionObjective.sort_order, InterventionObjective.id)
+        .all()
+    )
+    return rows
+
+
+@app.post("/api/objectives", response_model=ObjectiveResponse, status_code=status.HTTP_201_CREATED)
+def create_objective(body: ObjectiveCreate, db: Session = Depends(get_db)):
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Le texte de l'objectif est requis.")
+    max_order = db.query(InterventionObjective).count()
+    row = InterventionObjective(text=text, sort_order=max_order)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@app.put("/api/objectives/{objective_id}", response_model=ObjectiveResponse)
+def update_objective(objective_id: int, body: ObjectiveUpdate, db: Session = Depends(get_db)):
+    row = db.query(InterventionObjective).filter(InterventionObjective.id == objective_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Objectif introuvable")
+    if body.text is not None:
+        text = body.text.strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="Le texte de l'objectif ne peut pas être vide.")
+        row.text = text
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@app.delete("/api/objectives/{objective_id}")
+def delete_objective(objective_id: int, db: Session = Depends(get_db)):
+    row = db.query(InterventionObjective).filter(InterventionObjective.id == objective_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Objectif introuvable")
+    db.delete(row)
+    db.commit()
+    return {"message": "Objectif supprimé"}
 
 
 # ============================================================================

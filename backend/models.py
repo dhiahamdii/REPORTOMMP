@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, create_engine
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from datetime import datetime
@@ -36,7 +36,6 @@ class Report(Base):
     report_id = Column(String(50), unique=True, nullable=False)  # PREV_MMM_YYYY_XX format
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
     date = Column(DateTime, nullable=False)
-    technician_name = Column(String(255), nullable=False)
     location = Column(String(255), nullable=False)
     notes = Column(Text)
     signature = Column(Text)  # Base64 encoded signature image
@@ -93,6 +92,18 @@ class PortContact(Base):
     port = relationship("Port", back_populates="contacts")
 
 
+class InterventionObjective(Base):
+    """Objectifs d'intervention gérés depuis /manage (catalogue pour type préventive)."""
+
+    __tablename__ = "intervention_objectives"
+
+    id = Column(Integer, primary_key=True)
+    text = Column(Text, nullable=False)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class InterventionCounter(Base):
     __tablename__ = "intervention_counter"
     
@@ -109,9 +120,48 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./maintenance_reports.db")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+def _migrate_drop_technician_name():
+    """Drop legacy technician_name column from reports if present."""
+    try:
+        with engine.begin() as conn:
+            rows = conn.execute(text("PRAGMA table_info(reports)")).fetchall()
+            cols = {r[1] for r in rows}
+            if "technician_name" not in cols:
+                return
+            try:
+                conn.execute(text("ALTER TABLE reports DROP COLUMN technician_name"))
+            except Exception:
+                # Older SQLite: rebuild table without technician_name
+                conn.execute(text("""
+                    CREATE TABLE reports_new (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        report_id VARCHAR(50) NOT NULL UNIQUE,
+                        client_id INTEGER NOT NULL,
+                        date DATETIME NOT NULL,
+                        location VARCHAR(255) NOT NULL,
+                        notes TEXT,
+                        signature TEXT,
+                        created_at DATETIME,
+                        updated_at DATETIME,
+                        FOREIGN KEY(client_id) REFERENCES clients (id)
+                    )
+                """))
+                conn.execute(text("""
+                    INSERT INTO reports_new
+                    (id, report_id, client_id, date, location, notes, signature, created_at, updated_at)
+                    SELECT id, report_id, client_id, date, location, notes, signature, created_at, updated_at
+                    FROM reports
+                """))
+                conn.execute(text("DROP TABLE reports"))
+                conn.execute(text("ALTER TABLE reports_new RENAME TO reports"))
+    except Exception as e:
+        print(f"[WARN] Could not drop reports.technician_name: {e}")
+
+
 def init_db():
     """Initialize the database and seed default ports if empty."""
     Base.metadata.create_all(bind=engine)
+    _migrate_drop_technician_name()
     from port_seed import seed_ports_if_empty
 
     db = SessionLocal()

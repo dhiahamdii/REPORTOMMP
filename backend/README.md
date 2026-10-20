@@ -50,7 +50,7 @@ Le SDK **OpenAI** parle à une API **compatible** (même format `/v1/chat/comple
 |-----|---------------------|
 | **OpenAI** (facturation) | `OPENAI_API_KEY=sk-...` (optionnel : `OPENAI_BASE_URL` par défaut `https://api.openai.com/v1`) |
 | **Ollama** (local, sans tokens) | `OPENAI_BASE_URL=http://127.0.0.1:11434/v1` et `OPENAI_MODEL=llama3.2` (ou un modèle listé par `ollama list`). Pas besoin de vraie clé ; vous pouvez laisser `OPENAI_API_KEY` vide ou mettre `ollama`. |
-| **Groq** (quota gratuit) | `OPENAI_BASE_URL=https://api.groq.com/openai/v1` et `OPENAI_API_KEY=` clé [console.groq.com](https://console.groq.com), `OPENAI_MODEL=llama-3.1-8b-instant` ou `llama-3.3-70b-versatile`. Si un modèle est « decommissioned », le backend essaie automatiquement des modèles de repli. |
+| **Groq** (quota gratuit) | `OPENAI_BASE_URL=https://api.groq.com/openai/v1` et `OPENAI_API_KEY=` clé [console.groq.com](https://console.groq.com), `OPENAI_MODEL=openai/gpt-oss-20b` (les anciens `llama-3.1-8b-instant` / `llama-3.3-70b-versatile` sont retirés du tier gratuit). Si un modèle est indisponible, le backend essaie automatiquement des modèles de repli. |
 
 Variable **`OPENAI_MODEL`** : défaut `gpt-4o-mini` (adapté à OpenAI uniquement). Avec Ollama, alignez le nom sur un modèle **tiré** (`ollama pull llama3.2`).
 

@@ -33,7 +33,7 @@ DEFAULT_PORTS = [
             "Garde-côte — Bureau accès maritime",
         ],
         "intervention_contacts": [
-            "Huawei — Technicien terrain Nord — nord@huawei.example",
+            "Huawei — Contact terrain Nord — nord@huawei.example",
             "Waycon — Supervision chantier — bizerte@waycon.example",
         ],
     },
