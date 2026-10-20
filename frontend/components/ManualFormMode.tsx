@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -12,12 +12,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import ClientLogosFields from '@/components/ClientLogosFields';
-import { createReport, fetchNextPrevRef, refineFrenchText, type RefineFrenchField } from '@/lib/api';
+import {
+  createReport,
+  fetchNextPrevRef,
+  fetchObjectives,
+  refineFrenchText,
+  type InterventionObjective,
+  type RefineFrenchField,
+} from '@/lib/api';
 import { getDefaultReportLogos } from '@/lib/reportLogos';
 import { buildOmmpProjectTitle } from '@/lib/ommpProject';
-import type { PortContact, PortDefinition } from '@/lib/portDirectory';
+import type { PortDefinition } from '@/lib/portDirectory';
 import { usePorts } from '@/hooks/usePorts';
+
+type ReportKind = 'new' | 'old';
+/** Préventive = catalogue hybride ; Corrective = suggestions + saisie libre */
+type OperationType = 'preventive' | 'corrective';
 
 interface Task {
   id: string;
@@ -25,22 +35,19 @@ interface Task {
   completed: boolean;
 }
 
-interface ContactRow {
-  id: string;
-  line: string;
-}
-
 interface ManualFormModeProps {
   onSubmit: (data: Record<string, unknown>) => void;
 }
 
-function contactRowsFromPort(contacts: PortContact[]): ContactRow[] {
-  return contacts.map(c => ({ id: c.id, line: c.line }));
+function todayIsoDate(): string {
+  return new Date().toISOString().split('T')[0];
 }
 
 function newRowId(): string {
   return `r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
+
+const CUSTOM_OBJECTIF = '__custom__';
 
 export default function ManualFormMode({ onSubmit }: ManualFormModeProps) {
   const { ports, loading: portsLoading, getPortById } = usePorts();
@@ -51,22 +58,22 @@ export default function ManualFormMode({ onSubmit }: ManualFormModeProps) {
   const [location, setLocation] = useState('');
   const [portName, setPortName] = useState('');
   const [projectTitle, setProjectTitle] = useState('');
-  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [previewRef, setPreviewRef] = useState('');
-  const [technician, setTechnician] = useState('');
-  const [siteRows, setSiteRows] = useState<ContactRow[]>([]);
-  const [interventionRows, setInterventionRows] = useState<ContactRow[]>([]);
-  const [objectifIntervention, setObjectifIntervention] = useState('');
+  const [siteContactsText, setSiteContactsText] = useState('');
+  const [interventionContactsText, setInterventionContactsText] = useState('');
 
-  const [borrowSitePort, setBorrowSitePort] = useState('');
-  const [borrowSiteContactId, setBorrowSiteContactId] = useState('');
-  const [borrowIvPort, setBorrowIvPort] = useState('');
-  const [borrowIvContactId, setBorrowIvContactId] = useState('');
+  const [reportKind, setReportKind] = useState<ReportKind>('new');
+  const [date, setDate] = useState(todayIsoDate);
+  const [previewRef, setPreviewRef] = useState('');
+
+  const [operationType, setOperationType] = useState<OperationType>('preventive');
+  const [objectives, setObjectives] = useState<InterventionObjective[]>([]);
+  const [objectivesLoading, setObjectivesLoading] = useState(true);
+  const [selectedObjectifId, setSelectedObjectifId] = useState('');
+  const [objectifIntervention, setObjectifIntervention] = useState('');
 
   const [tasks, setTasks] = useState<Task[]>([{ id: '1', description: '', completed: true }]);
   const [findings, setFindings] = useState('');
   const [recommendations, setRecommendations] = useState('');
-  const [notes, setNotes] = useState('');
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -75,7 +82,6 @@ export default function ManualFormMode({ onSubmit }: ManualFormModeProps) {
   const [companyLogo, setCompanyLogo] = useState<string | null>(null);
   const [clientLogo, setClientLogo] = useState<string | null>(null);
 
-  /** Toujours la dernière valeur saisie (évite un envoi « vide » ou périmé au clic IA). */
   const refineSnapshotRef = useRef({
     objectifIntervention,
     findings,
@@ -95,8 +101,18 @@ export default function ManualFormMode({ onSubmit }: ManualFormModeProps) {
     setLocation(p.interventionLocation);
     setPortName(p.portName);
     setProjectTitle(buildOmmpProjectTitle(p.portName));
-    setSiteRows(contactRowsFromPort(p.siteContacts));
-    setInterventionRows(contactRowsFromPort(p.interventionContacts));
+    setSiteContactsText(
+      p.siteContacts
+        .map(c => c.line.trim())
+        .filter(Boolean)
+        .join('\n'),
+    );
+    setInterventionContactsText(
+      p.interventionContacts
+        .map(c => c.line.trim())
+        .filter(Boolean)
+        .join('\n'),
+    );
   }, []);
 
   const refreshPreviewRef = useCallback(async () => {
@@ -132,39 +148,44 @@ export default function ManualFormMode({ onSubmit }: ManualFormModeProps) {
     });
   }, []);
 
-  const borrowSiteOptions = useMemo(() => {
-    return ports.filter(p => p.id !== portId);
-  }, [ports, portId]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setObjectivesLoading(true);
+      try {
+        const list = await fetchObjectives();
+        if (!cancelled) setObjectives(list);
+      } catch {
+        if (!cancelled) setObjectives([]);
+      } finally {
+        if (!cancelled) setObjectivesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const borrowIvOptions = useMemo(() => {
-    return ports.filter(p => p.id !== portId);
-  }, [ports, portId]);
+  useEffect(() => {
+    if (reportKind === 'new') {
+      setDate(todayIsoDate());
+    }
+  }, [reportKind]);
 
-  const addSiteFromOtherPort = () => {
-    const p = getPortById(borrowSitePort);
-    const c = p?.siteContacts.find(x => x.id === borrowSiteContactId);
-    if (!p || !c) return;
-    setSiteRows(prev => [...prev, { id: newRowId(), line: `${c.line} (invité — ${p.portName})` }]);
+  useEffect(() => {
+    setSelectedObjectifId('');
+    setObjectifIntervention('');
+  }, [operationType]);
+
+  const onPreventiveObjectifPick = (value: string) => {
+    setSelectedObjectifId(value);
+    if (value === CUSTOM_OBJECTIF) {
+      setObjectifIntervention('');
+      return;
+    }
+    const found = objectives.find(o => String(o.id) === value);
+    setObjectifIntervention(found?.text ?? '');
   };
-
-  const addIvFromOtherPort = () => {
-    const p = getPortById(borrowIvPort);
-    const c = p?.interventionContacts.find(x => x.id === borrowIvContactId);
-    if (!p || !c) return;
-    setInterventionRows(prev => [...prev, { id: newRowId(), line: `${c.line} (invité — ${p.portName})` }]);
-  };
-
-  const updateSiteLine = (id: string, line: string) => {
-    setSiteRows(prev => prev.map(r => (r.id === id ? { ...r, line } : r)));
-  };
-  const removeSiteRow = (id: string) => setSiteRows(prev => prev.filter(r => r.id !== id));
-  const addEmptySiteRow = () => setSiteRows(prev => [...prev, { id: newRowId(), line: '' }]);
-
-  const updateIvLine = (id: string, line: string) => {
-    setInterventionRows(prev => prev.map(r => (r.id === id ? { ...r, line } : r)));
-  };
-  const removeIvRow = (id: string) => setInterventionRows(prev => prev.filter(r => r.id !== id));
-  const addEmptyIvRow = () => setInterventionRows(prev => [...prev, { id: newRowId(), line: '' }]);
 
   const runRefine = async (
     key: string,
@@ -245,7 +266,8 @@ export default function ManualFormMode({ onSubmit }: ManualFormModeProps) {
   const validateForm = () => {
     const e: Record<string, string> = {};
     if (!portId) e.port = 'Sélectionnez un port';
-    if (!technician.trim()) e.technician = 'Technicien requis';
+    if (reportKind === 'old' && !date) e.date = 'Date requise';
+    if (!operationType) e.operationType = 'Type d’opération requis';
     if (!objectifIntervention.trim()) e.objectif = 'Objectif d’intervention requis';
     const validTasks = tasks.filter(t => t.description.trim());
     if (validTasks.length === 0) e.tasks = 'Au moins une tâche est requise';
@@ -266,12 +288,12 @@ export default function ManualFormMode({ onSubmit }: ManualFormModeProps) {
         client_name: clientName,
         location,
         date: iso,
-        technician_name: technician,
+        report_id: reference,
         tasks: tasks.filter(t => t.description.trim()).map(t => ({
           description: t.description,
           completed: t.completed,
         })),
-        notes,
+        notes: undefined as string | undefined,
       };
 
       try {
@@ -280,31 +302,22 @@ export default function ManualFormMode({ onSubmit }: ManualFormModeProps) {
         console.warn('Backend save failed:', err);
       }
 
-      const contactsSite = siteRows
-        .map(r => r.line.trim())
-        .filter(Boolean)
-        .join('\n');
-      const contactsIv = interventionRows
-        .map(r => r.line.trim())
-        .filter(Boolean)
-        .join('\n');
-
       onSubmit({
         clientName,
         location,
         date,
-        technician,
         tasks: tasks.filter(t => t.description.trim()).map(t => ({ ...t, completed: true })),
-        notes: notes.trim() || undefined,
         findings: findings.trim() || undefined,
         recommendations: recommendations.trim() || undefined,
         port_name: portName,
         project_title: projectTitle,
         objectif_intervention: objectifIntervention.trim(),
         contract_ref: contractRef.trim(),
-        contacts_site: contactsSite || undefined,
-        contacts_intervention: contactsIv || undefined,
+        contacts_site: siteContactsText || undefined,
+        contacts_intervention: interventionContactsText || undefined,
         reference_intervention_suggeree: reference,
+        operation_type: operationType,
+        report_kind: reportKind,
         companyLogo,
         clientLogo,
       });
@@ -314,11 +327,11 @@ export default function ManualFormMode({ onSubmit }: ManualFormModeProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8">
+    <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
       {aiFeedback ? (
         <div
           role="status"
-          className={`rounded-lg border px-4 py-3 text-sm ${
+          className={`rounded-lg border px-3 py-3 text-sm sm:px-4 ${
             aiFeedback.type === 'ok'
               ? 'border-green-200 bg-green-50 text-green-900'
               : aiFeedback.type === 'warn'
@@ -330,199 +343,129 @@ export default function ManualFormMode({ onSubmit }: ManualFormModeProps) {
         </div>
       ) : null}
 
-      <section className="rounded-lg border border-slate-200 bg-slate-50/80 p-6">
-        <h2 className="mb-4 text-xl font-bold text-slate-900">Port et identification</h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Port *</label>
-            <Select value={portId} onValueChange={setPortId} disabled={portsLoading || ports.length === 0}>
-              <SelectTrigger className="bg-white">
-                <SelectValue placeholder={portsLoading ? 'Chargement…' : 'Choisir un port'} />
-              </SelectTrigger>
-              <SelectContent>
-                {ports.map(p => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {ports.length === 0 && !portsLoading ? (
-              <p className="mt-1 text-sm text-amber-700">
-                Aucun port — ajoutez-en dans{' '}
-                <Link href="/manage" className="font-medium underline">
-                  Ports &amp; contacts
-                </Link>
-                .
-              </p>
-            ) : null}
-            {errors.port && <p className="mt-1 text-sm text-red-600">{errors.port}</p>}
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Date d’intervention *</label>
-            <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-white" />
-          </div>
+      <section className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 sm:p-6">
+        <h2 className="mb-4 text-lg font-bold text-slate-900 sm:text-xl">Intervention</h2>
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-700">Port *</label>
+          <Select value={portId} onValueChange={setPortId} disabled={portsLoading || ports.length === 0}>
+            <SelectTrigger className="max-w-md bg-white">
+              <SelectValue placeholder={portsLoading ? 'Chargement…' : 'Choisir un port'} />
+            </SelectTrigger>
+            <SelectContent>
+              {ports.map(p => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {ports.length === 0 && !portsLoading ? (
+            <p className="mt-1 text-sm text-amber-700">
+              Aucun port — ajoutez-en dans{' '}
+              <Link href="/manage" className="font-medium underline">
+                Gestion
+              </Link>
+              .
+            </p>
+          ) : null}
+          {errors.port && <p className="mt-1 text-sm text-red-600">{errors.port}</p>}
         </div>
 
-        <div className="mt-4 space-y-2 rounded-md border border-blue-100 bg-white p-4 text-sm text-slate-800">
-          <p>
-            <span className="font-semibold text-slate-600">N° d’intervention (aperçu) :</span>{' '}
-            <span className="font-mono text-blue-700">{previewRef || '…'}</span>
-            <span className="ml-2 text-xs text-slate-500">(numéro définitif attribué à la génération)</span>
-          </p>
-          <p>
-            <span className="font-semibold text-slate-600">Projet (titre fixe + port) :</span>
-          </p>
-          <p className="text-xs leading-snug text-slate-700">{projectTitle || '—'}</p>
-        </div>
+        {portId ? (
+          <div className="mt-4 space-y-1 rounded-md border border-blue-100 bg-white p-4 text-sm text-slate-700">
+            <p>
+              <span className="font-semibold text-slate-600">N° (aperçu) :</span>{' '}
+              <span className="font-mono text-blue-700">{previewRef || '…'}</span>
+            </p>
+            <p>
+              <span className="font-semibold text-slate-600">Client :</span> {clientName || '—'}
+            </p>
+            <p>
+              <span className="font-semibold text-slate-600">Lieu :</span> {location || '—'}
+            </p>
+            <p className="text-xs text-slate-500">
+              Contacts, contrat et logos sont repris automatiquement depuis le port (
+              <Link href="/manage" className="underline">
+                Gestion
+              </Link>
+              ).
+            </p>
+          </div>
+        ) : null}
+      </section>
 
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Client / commanditaire</label>
-            <Input value={clientName} onChange={e => setClientName(e.target.value)} className="bg-white" />
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Contrat / référence</label>
-            <Input value={contractRef} onChange={e => setContractRef(e.target.value)} className="bg-white" />
-          </div>
-          <div className="md:col-span-2">
-            <label className="mb-2 block text-sm font-medium text-slate-700">Lieu d’intervention</label>
-            <Input value={location} onChange={e => setLocation(e.target.value)} className="bg-white" />
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Technicien *</label>
+      <section className="rounded-lg border border-slate-200 p-4 sm:p-6">
+        <h2 className="mb-4 text-lg font-bold text-slate-900 sm:text-xl">Type de rapport *</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          <Button
+            type="button"
+            variant={reportKind === 'new' ? 'default' : 'outline'}
+            className={`w-full sm:w-auto ${reportKind === 'new' ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+            onClick={() => setReportKind('new')}
+          >
+            Nouveau rapport
+          </Button>
+          <Button
+            type="button"
+            variant={reportKind === 'old' ? 'default' : 'outline'}
+            className={`w-full sm:w-auto ${reportKind === 'old' ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+            onClick={() => setReportKind('old')}
+          >
+            Ancien rapport
+          </Button>
+        </div>
+        {reportKind === 'old' ? (
+          <div className="mt-4 max-w-xs">
+            <label className="mb-2 block text-sm font-medium text-slate-700">
+              Date d’intervention *
+            </label>
             <Input
-              value={technician}
-              onChange={e => setTechnician(e.target.value)}
-              className={`bg-white ${errors.technician ? 'border-red-500' : ''}`}
-              placeholder="Nom du technicien"
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className={`bg-white ${errors.date ? 'border-red-500' : ''}`}
             />
-            {errors.technician && <p className="mt-1 text-sm text-red-600">{errors.technician}</p>}
+            <p className="mt-1 text-xs text-slate-500">
+              Choisissez la date de l’intervention passée.
+            </p>
+            {errors.date && <p className="mt-1 text-sm text-red-600">{errors.date}</p>}
           </div>
-        </div>
+        ) : null}
       </section>
 
-      <section className="rounded-lg border border-slate-200 p-6">
-        <h2 className="mb-2 text-xl font-bold text-slate-900">Contacts sur site</h2>
-        <p className="mb-4 text-sm text-slate-600">
-          Liste propre au port ; utilisez <strong>Supprimer</strong> pour retirer une ligne (uniquement ce
-          rapport). Les contacts empruntés à un autre port ne sont pas enregistrés dans l’annuaire.
+      <section className="rounded-lg border border-slate-200 p-4 sm:p-6">
+        <h2 className="mb-4 text-lg font-bold text-slate-900 sm:text-xl">Type d’opération *</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          <Button
+            type="button"
+            variant={operationType === 'preventive' ? 'default' : 'outline'}
+            className={`w-full sm:w-auto ${operationType === 'preventive' ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+            onClick={() => setOperationType('preventive')}
+          >
+            Préventive
+          </Button>
+          <Button
+            type="button"
+            variant={operationType === 'corrective' ? 'default' : 'outline'}
+            className={`w-full sm:w-auto ${operationType === 'corrective' ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+            onClick={() => setOperationType('corrective')}
+          >
+            Corrective
+          </Button>
+        </div>
+        {errors.operationType && (
+          <p className="mt-2 text-sm text-red-600">{errors.operationType}</p>
+        )}
+        <p className="mt-3 text-sm text-slate-600">
+          {operationType === 'preventive'
+            ? 'Choisissez un objectif du catalogue ou rédigez-en un personnalisé.'
+            : 'Rédigez l’objectif librement ; les suggestions du catalogue restent disponibles.'}
         </p>
-        <div className="mb-4 flex flex-wrap items-end gap-2 rounded-md bg-slate-50 p-3">
-          <div className="min-w-[140px] flex-1">
-            <label className="mb-1 block text-xs text-slate-600">Autre port</label>
-            <Select value={borrowSitePort} onValueChange={v => { setBorrowSitePort(v); setBorrowSiteContactId(''); }}>
-              <SelectTrigger className="bg-white">
-                <SelectValue placeholder="Port source" />
-              </SelectTrigger>
-              <SelectContent>
-                {borrowSiteOptions.map(p => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="min-w-[180px] flex-1">
-            <label className="mb-1 block text-xs text-slate-600">Contact</label>
-            <Select value={borrowSiteContactId} onValueChange={setBorrowSiteContactId}>
-              <SelectTrigger className="bg-white">
-                <SelectValue placeholder="Choisir" />
-              </SelectTrigger>
-              <SelectContent>
-                {(getPortById(borrowSitePort)?.siteContacts ?? []).map(c => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.line.slice(0, 80)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button type="button" variant="outline" onClick={addSiteFromOtherPort}>
-            Ajouter (cette intervention)
-          </Button>
-        </div>
-        <div className="space-y-2">
-          {siteRows.map(row => (
-            <div key={row.id} className="flex gap-2">
-              <Input
-                value={row.line}
-                onChange={e => updateSiteLine(row.id, e.target.value)}
-                className="flex-1 bg-white"
-                placeholder="Nom — fonction — coordonnées"
-              />
-              <Button type="button" variant="ghost" className="text-red-600 hover:bg-red-50" onClick={() => removeSiteRow(row.id)}>
-                Supprimer
-              </Button>
-            </div>
-          ))}
-        </div>
-        <Button type="button" variant="secondary" className="mt-3" onClick={addEmptySiteRow}>
-          + Ligne contact vide
-        </Button>
       </section>
 
-      <section className="rounded-lg border border-slate-200 p-6">
-        <h2 className="mb-2 text-xl font-bold text-slate-900">Contacts intervention (Huawei / Waycon)</h2>
-        <p className="mb-4 text-sm text-slate-600">Prérempli selon le port ; ajout ou retrait libre pour ce rapport.</p>
-        <div className="mb-4 flex flex-wrap items-end gap-2 rounded-md bg-slate-50 p-3">
-          <div className="min-w-[140px] flex-1">
-            <label className="mb-1 block text-xs text-slate-600">Autre port</label>
-            <Select value={borrowIvPort} onValueChange={v => { setBorrowIvPort(v); setBorrowIvContactId(''); }}>
-              <SelectTrigger className="bg-white">
-                <SelectValue placeholder="Port source" />
-              </SelectTrigger>
-              <SelectContent>
-                {borrowIvOptions.map(p => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="min-w-[180px] flex-1">
-            <label className="mb-1 block text-xs text-slate-600">Contact</label>
-            <Select value={borrowIvContactId} onValueChange={setBorrowIvContactId}>
-              <SelectTrigger className="bg-white">
-                <SelectValue placeholder="Choisir" />
-              </SelectTrigger>
-              <SelectContent>
-                {(getPortById(borrowIvPort)?.interventionContacts ?? []).map(c => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.line.slice(0, 80)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button type="button" variant="outline" onClick={addIvFromOtherPort}>
-            Ajouter (cette intervention)
-          </Button>
-        </div>
-        <div className="space-y-2">
-          {interventionRows.map(row => (
-            <div key={row.id} className="flex gap-2">
-              <Input
-                value={row.line}
-                onChange={e => updateIvLine(row.id, e.target.value)}
-                className="flex-1 bg-white"
-              />
-              <Button type="button" variant="ghost" className="text-red-600 hover:bg-red-50" onClick={() => removeIvRow(row.id)}>
-                Supprimer
-              </Button>
-            </div>
-          ))}
-        </div>
-        <Button type="button" variant="secondary" className="mt-3" onClick={addEmptyIvRow}>
-          + Ligne contact vide
-        </Button>
-      </section>
-
-      <section className="rounded-lg border border-slate-200 p-6">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-xl font-bold text-slate-900">Objectif de l’intervention *</h2>
+      <section className="rounded-lg border border-slate-200 p-4 sm:p-6">
+        <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <h2 className="text-lg font-bold text-slate-900 sm:text-xl">Objectif de l’intervention *</h2>
           <Button
             type="button"
             variant="outline"
@@ -540,26 +483,102 @@ export default function ManualFormMode({ onSubmit }: ManualFormModeProps) {
             {aiBusy === 'obj' ? '…' : 'Reformuler (IA)'}
           </Button>
         </div>
-        <Textarea
-          ref={objectifTextareaRef}
-          value={objectifIntervention}
-          onChange={e => setObjectifIntervention(e.target.value)}
-          rows={4}
-          className={errors.objectif ? 'border-red-500' : ''}
-          placeholder="Notes brutes acceptées ; l’IA produit un objectif professionnel concis."
-        />
+
+        {operationType === 'preventive' ? (
+          <div className="mb-4 space-y-3">
+            <Select
+              value={selectedObjectifId}
+              onValueChange={onPreventiveObjectifPick}
+              disabled={objectivesLoading}
+            >
+              <SelectTrigger className="bg-white">
+                <SelectValue
+                  placeholder={
+                    objectivesLoading ? 'Chargement…' : 'Choisir un objectif du catalogue'
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {objectives.map(o => (
+                  <SelectItem key={o.id} value={String(o.id)}>
+                    {o.text.length > 90 ? `${o.text.slice(0, 90)}…` : o.text}
+                  </SelectItem>
+                ))}
+                <SelectItem value={CUSTOM_OBJECTIF}>Autre (saisie libre)</SelectItem>
+              </SelectContent>
+            </Select>
+            {objectives.length === 0 && !objectivesLoading ? (
+              <p className="text-sm text-amber-700">
+                Catalogue vide — ajoutez des objectifs dans{' '}
+                <Link href="/manage" className="font-medium underline">
+                  Gestion
+                </Link>{' '}
+                ou choisissez « Autre ».
+              </p>
+            ) : null}
+            {selectedObjectifId ? (
+              <Textarea
+                ref={objectifTextareaRef}
+                value={objectifIntervention}
+                onChange={e => {
+                  setObjectifIntervention(e.target.value);
+                  if (selectedObjectifId !== CUSTOM_OBJECTIF) {
+                    setSelectedObjectifId(CUSTOM_OBJECTIF);
+                  }
+                }}
+                rows={4}
+                className={errors.objectif ? 'border-red-500' : ''}
+                placeholder={
+                  selectedObjectifId === CUSTOM_OBJECTIF
+                    ? 'Rédigez l’objectif…'
+                    : 'Objectif sélectionné — vous pouvez le modifier'
+                }
+              />
+            ) : null}
+          </div>
+        ) : (
+          <div className="mb-2 space-y-3">
+            {objectives.length > 0 ? (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">
+                  Suggestions (cliquer pour préremplir)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {objectives.map(o => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => setObjectifIntervention(o.text)}
+                      className="max-w-full truncate rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-left text-xs text-slate-700 hover:border-blue-400 hover:bg-blue-50"
+                      title={o.text}
+                    >
+                      {o.text.length > 60 ? `${o.text.slice(0, 60)}…` : o.text}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <Textarea
+              ref={objectifTextareaRef}
+              value={objectifIntervention}
+              onChange={e => setObjectifIntervention(e.target.value)}
+              rows={4}
+              className={errors.objectif ? 'border-red-500' : ''}
+              list="objectif-suggestions"
+              placeholder="Rédigez l’objectif — les suggestions ci-dessus sont optionnelles."
+            />
+            <datalist id="objectif-suggestions">
+              {objectives.map(o => (
+                <option key={o.id} value={o.text} />
+              ))}
+            </datalist>
+          </div>
+        )}
         {errors.objectif && <p className="mt-1 text-sm text-red-600">{errors.objectif}</p>}
       </section>
 
-      <ClientLogosFields
-        companyLogo={companyLogo}
-        clientLogo={clientLogo}
-        onCompanyLogoChange={setCompanyLogo}
-        onClientLogoChange={setClientLogo}
-      />
-
-      <section className="rounded-lg border border-slate-200 p-6">
-        <h2 className="mb-4 text-xl font-bold text-slate-900">Détails des tâches réalisées</h2>
+      <section className="rounded-lg border border-slate-200 p-4 sm:p-6">
+        <h2 className="mb-4 text-lg font-bold text-slate-900 sm:text-xl">Détails des tâches réalisées</h2>
         {errors.tasks && <p className="mb-2 text-sm text-red-600">{errors.tasks}</p>}
         <div className="space-y-3">
           {tasks.map(task => (
@@ -603,9 +622,9 @@ export default function ManualFormMode({ onSubmit }: ManualFormModeProps) {
         </Button>
       </section>
 
-      <section className="rounded-lg border border-slate-200 p-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-xl font-bold text-slate-900">Problèmes détectés</h2>
+      <section className="rounded-lg border border-slate-200 p-4 sm:p-6">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <h2 className="text-lg font-bold text-slate-900 sm:text-xl">Problèmes détectés</h2>
           <Button
             type="button"
             variant="outline"
@@ -625,12 +644,16 @@ export default function ManualFormMode({ onSubmit }: ManualFormModeProps) {
         </div>
         <Textarea
           ref={findingsTextareaRef}
-          value={findings} onChange={e => setFindings(e.target.value)} rows={4} className="bg-white" />
+          value={findings}
+          onChange={e => setFindings(e.target.value)}
+          rows={4}
+          className="bg-white"
+        />
       </section>
 
-      <section className="rounded-lg border border-slate-200 p-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-xl font-bold text-slate-900">Recommandations</h2>
+      <section className="rounded-lg border border-slate-200 p-4 sm:p-6">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <h2 className="text-lg font-bold text-slate-900 sm:text-xl">Recommandations</h2>
           <Button
             type="button"
             variant="outline"
@@ -650,16 +673,19 @@ export default function ManualFormMode({ onSubmit }: ManualFormModeProps) {
         </div>
         <Textarea
           ref={recommendationsTextareaRef}
-          value={recommendations} onChange={e => setRecommendations(e.target.value)} rows={4} className="bg-white" />
+          value={recommendations}
+          onChange={e => setRecommendations(e.target.value)}
+          rows={4}
+          className="bg-white"
+        />
       </section>
 
-      <section>
-        <label className="mb-2 block text-sm font-medium text-slate-700">Notes complémentaires (optionnel)</label>
-        <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="bg-white" />
-      </section>
-
-      <div className="flex gap-4 pt-2">
-        <Button type="submit" disabled={loading} className="bg-blue-600 px-8 py-3 font-semibold hover:bg-blue-700">
+      <div className="flex pt-2">
+        <Button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-blue-600 px-8 py-3 font-semibold hover:bg-blue-700 sm:w-auto"
+        >
           {loading ? 'Génération…' : 'Générer le rapport'}
         </Button>
       </div>

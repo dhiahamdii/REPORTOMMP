@@ -48,7 +48,6 @@ export interface Report {
   report_id: string;
   client_id?: number;
   date: string;
-  technician_name: string;
   location: string;
   notes?: string;
   signature?: string;
@@ -148,10 +147,11 @@ export async function createReport(reportData: {
   client_name: string;
   location: string;
   date: string;
-  technician_name: string;
   notes?: string;
   signature?: string;
   tasks: Task[];
+  /** Already-allocated PREV_MMM_YYYY_NN (avoids double counter bump). */
+  report_id?: string;
 }): Promise<Report> {
   try {
     const response = await fetch(`${API_BASE}/api/reports`, {
@@ -243,7 +243,7 @@ export type RefineFrenchResult = {
   fallback?: boolean;
 };
 
-/** Reformulation professionnelle (français technique OMMP) à partir de notes technicien. */
+/** Reformulation professionnelle (français technique OMMP) à partir de notes brutes. */
 export async function refineFrenchText(
   text: string,
   field: RefineFrenchField = 'task',
@@ -343,6 +343,61 @@ export async function deletePortContact(slug: string, contactId: number): Promis
     `${API_BASE}/api/ports/${encodeURIComponent(slug)}/contacts/${contactId}`,
     { method: 'DELETE' },
   );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(fastApiErrorMessage(err, `HTTP error! status: ${response.status}`));
+  }
+}
+
+// ============================================================================
+// Intervention objectives (catalogue)
+// ============================================================================
+
+export type InterventionObjective = {
+  id: number;
+  text: string;
+  sort_order: number;
+};
+
+export async function fetchObjectives(): Promise<InterventionObjective[]> {
+  const response = await fetch(`${API_BASE}/api/objectives`);
+  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+  return await response.json();
+}
+
+export async function createObjective(text: string): Promise<InterventionObjective> {
+  const response = await fetch(`${API_BASE}/api/objectives`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(fastApiErrorMessage(err, `HTTP error! status: ${response.status}`));
+  }
+  return await response.json();
+}
+
+export async function updateObjective(
+  id: number,
+  text: string,
+): Promise<InterventionObjective> {
+  const response = await fetch(`${API_BASE}/api/objectives/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(fastApiErrorMessage(err, `HTTP error! status: ${response.status}`));
+  }
+  return await response.json();
+}
+
+export async function deleteObjective(id: number): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/objectives/${id}`, {
+    method: 'DELETE',
+  });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     throw new Error(fastApiErrorMessage(err, `HTTP error! status: ${response.status}`));

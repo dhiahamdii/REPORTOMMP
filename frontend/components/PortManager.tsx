@@ -249,30 +249,35 @@ export default function PortManager() {
           )}
         </aside>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-6">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
           {!draft ? (
             <p className="text-slate-600">
               Sélectionnez un port dans la liste ou créez-en un nouveau.
             </p>
           ) : (
             <div className="space-y-6">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-xl font-bold text-slate-900">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                <h2 className="text-lg font-bold text-slate-900 sm:text-xl">
                   {draft.isNew ? 'Nouveau port' : draft.label}
                 </h2>
-                <div className="flex gap-2">
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                   {!draft.isNew ? (
                     <Button
                       type="button"
                       variant="outline"
-                      className="text-red-600"
+                      className="w-full text-red-600 sm:w-auto"
                       disabled={saving}
                       onClick={() => void removePort()}
                     >
                       Supprimer
                     </Button>
                   ) : null}
-                  <Button type="button" disabled={saving} onClick={() => void saveDraft()}>
+                  <Button
+                    type="button"
+                    className="w-full sm:w-auto"
+                    disabled={saving}
+                    onClick={() => void saveDraft()}
+                  >
                     {saving ? 'Enregistrement…' : 'Enregistrer'}
                   </Button>
                 </div>

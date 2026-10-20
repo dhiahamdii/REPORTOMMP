@@ -52,7 +52,7 @@ export const PORT_DIRECTORY: PortDefinition[] = [
       { id: 'biz-s2', line: 'Garde-côte — Bureau accès maritime' },
     ],
     interventionContacts: [
-      { id: 'biz-i1', line: 'Huawei — Technicien terrain Nord — nord@huawei.example' },
+      { id: 'biz-i1', line: 'Huawei — Contact terrain Nord — nord@huawei.example' },
       { id: 'biz-i2', line: 'Waycon — Supervision chantier — bizerte@waycon.example' },
     ],
   },

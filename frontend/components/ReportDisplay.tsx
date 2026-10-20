@@ -27,7 +27,6 @@ function toExportData(raw: any, signatureDataUrl?: string | null): ReportExportD
         : raw?.date
           ? new Date(raw.date).toISOString()
           : new Date().toISOString(),
-    technician: String(raw?.technician ?? ''),
     tasks: Array.isArray(raw?.tasks)
       ? raw.tasks.map((t: any) => ({
           description: String(t?.description ?? ''),
@@ -110,7 +109,6 @@ CLIENT INFORMATION:
 Client       | ${data.clientName}
 Location     | ${data.location}
 Date         | ${new Date(data.date).toLocaleDateString()}
-Technician   | ${data.technician}
 
 MAINTENANCE TASKS:
 ${data.tasks
@@ -201,30 +199,31 @@ Generated on ${new Date().toLocaleString()}
     document.body.removeChild(element);
   };
 
-  const thClass = 'bg-slate-100 px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600';
-  const tdClass = 'border-t border-slate-200 px-4 py-3 text-slate-800';
+  const thClass =
+    'w-[38%] bg-slate-100 px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-600 sm:w-auto sm:px-4 sm:text-xs';
+  const tdClass = 'border-t border-slate-200 px-2 py-3 text-slate-800 sm:px-4';
   const ommpUi = !!(data.project_title || data.objectif_intervention || data.resume);
 
   const resumeHtml = String(data.resume || data.executive_summary || '').trim();
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Report Header */}
-      <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-lg">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-lg sm:p-6 md:p-8">
         {/* Logos : OMMP gauche, Huawei droite */}
-        <div className="-mx-2 mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 pb-6">
-          <div className="flex min-h-[52px] min-w-[120px] max-w-[42%] items-center justify-start pl-2">
+        <div className="-mx-1 mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4 sm:-mx-2 sm:mb-6 sm:gap-4 sm:pb-6">
+          <div className="flex min-h-[40px] min-w-[90px] max-w-[45%] items-center justify-start pl-1 sm:min-h-[52px] sm:min-w-[120px] sm:max-w-[42%] sm:pl-2">
             <img
               src={displayCompanyLogo}
               alt="Logo OMMP"
-              className="max-h-16 max-w-full object-contain"
+              className="max-h-12 max-w-full object-contain sm:max-h-16"
             />
           </div>
-          <div className="flex min-h-[52px] min-w-[120px] max-w-[42%] items-center justify-end pr-2">
+          <div className="flex min-h-[40px] min-w-[90px] max-w-[45%] items-center justify-end pr-1 sm:min-h-[52px] sm:min-w-[120px] sm:max-w-[42%] sm:pr-2">
             <img
               src={displayClientLogo}
               alt="Logo Huawei"
-              className="max-h-16 max-w-full object-contain"
+              className="max-h-12 max-w-full object-contain sm:max-h-16"
             />
           </div>
         </div>
@@ -250,30 +249,30 @@ Generated on ${new Date().toLocaleString()}
           </div>
         ) : null}
 
-        <div className="mb-6 flex flex-col justify-between gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-start">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900">
+        <div className="mb-6 flex flex-col justify-between gap-3 border-b border-slate-200 pb-6 sm:flex-row sm:items-start sm:gap-4">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-slate-900 sm:text-2xl md:text-3xl">
               {ommpUi ? 'Rapport technique OMMP / Huawei-Waycon' : 'Maintenance Report'}
             </h1>
-            <p className="mt-2 text-lg text-slate-600">
+            <p className="mt-2 break-all text-base text-slate-600 sm:text-lg">
               {ommpUi ? 'Réf. :' : 'Report ID:'}{' '}
               <span className="font-mono font-semibold text-blue-600">{reportId}</span>
             </p>
           </div>
           <button
             onClick={onBack}
-            className="rounded-lg px-4 py-2 font-medium text-slate-600 hover:bg-slate-100"
+            className="w-full shrink-0 rounded-lg px-4 py-2 font-medium text-slate-600 hover:bg-slate-100 sm:w-auto"
           >
-            ← Back to Form
+            ← Retour au formulaire
           </button>
         </div>
 
         {/* Client information table */}
-        <div className="mb-8 overflow-hidden rounded-lg border border-slate-200">
-          <table className="w-full border-collapse text-sm">
+        <div className="mb-8 overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full min-w-[280px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-blue-50">
-                <th colSpan={2} className="px-4 py-2 text-left text-sm font-bold text-blue-900">
+                <th colSpan={2} className="px-3 py-2 text-left text-sm font-bold text-blue-900 sm:px-4">
                   {ommpUi ? 'Renseignements généraux' : 'Client information'}
                 </th>
               </tr>
@@ -302,12 +301,6 @@ Generated on ${new Date().toLocaleString()}
                   {ommpUi ? 'Date intervention' : 'Date'}
                 </td>
                 <td className={tdClass}>{new Date(data.date).toLocaleDateString()}</td>
-              </tr>
-              <tr>
-                <td className={thClass}>
-                  {ommpUi ? 'Technicien' : 'Technician'}
-                </td>
-                <td className={tdClass}>{data.technician}</td>
               </tr>
               {ommpUi && data.contract_ref ? (
                 <tr>
@@ -425,50 +418,50 @@ Generated on ${new Date().toLocaleString()}
       </div>
 
       {/* Signature Canvas */}
-      <div className="rounded-xl bg-white p-8 shadow-lg">
-        <h3 className="mb-4 text-xl font-bold text-slate-900">Technician signature</h3>
+      <div className="rounded-xl bg-white p-4 shadow-lg sm:p-6 md:p-8">
+        <h3 className="mb-4 text-lg font-bold text-slate-900 sm:text-xl">Signature</h3>
         <SignatureCanvas onSignature={setSignature} />
       </div>
 
       {/* Export Options */}
-      <div className="rounded-xl bg-white p-8 shadow-lg">
-        <h3 className="mb-2 text-xl font-bold text-slate-900">Export report</h3>
+      <div className="rounded-xl bg-white p-4 shadow-lg sm:p-6 md:p-8">
+        <h3 className="mb-2 text-lg font-bold text-slate-900 sm:text-xl">Exporter le rapport</h3>
         <p className="mb-6 text-sm text-slate-600">
           HTML, PDF et Word reprennent la même structure OMMP quand les champs projet ou résumé sont présents. JSON
           pour sauvegardes ou intégrations.
         </p>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-5">
           <Button
             onClick={handleExportText}
-            className="rounded-lg bg-slate-600 px-6 py-3 font-semibold text-white hover:bg-slate-700"
+            className="w-full rounded-lg bg-slate-600 px-4 py-3 font-semibold text-white hover:bg-slate-700 sm:px-6"
           >
-            Export as text (.txt)
+            Texte (.txt)
           </Button>
           <Button
             onClick={handleExportHtml}
-            className="rounded-lg bg-slate-600 px-6 py-3 font-semibold text-white hover:bg-slate-700"
+            className="w-full rounded-lg bg-slate-600 px-4 py-3 font-semibold text-white hover:bg-slate-700 sm:px-6"
           >
-            Export as HTML
+            HTML
           </Button>
           <Button
             onClick={handleExportPdf}
             disabled={pdfLoading}
-            className="rounded-lg bg-red-700 px-6 py-3 font-semibold text-white hover:bg-red-800 disabled:opacity-50"
+            className="w-full rounded-lg bg-red-700 px-4 py-3 font-semibold text-white hover:bg-red-800 disabled:opacity-50 sm:px-6"
           >
-            {pdfLoading ? '…' : 'Export PDF (.pdf)'}
+            {pdfLoading ? '…' : 'PDF (.pdf)'}
           </Button>
           <Button
             onClick={handleExportDocx}
             disabled={docxLoading}
-            className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            className="w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50 sm:px-6"
           >
-            {docxLoading ? 'Building…' : 'Export Word (.docx)'}
+            {docxLoading ? '…' : 'Word (.docx)'}
           </Button>
           <Button
             onClick={handleExportJSON}
-            className="rounded-lg bg-slate-600 px-6 py-3 font-semibold text-white hover:bg-slate-700"
+            className="w-full rounded-lg bg-slate-600 px-4 py-3 font-semibold text-white hover:bg-slate-700 sm:px-6"
           >
-            Export as JSON
+            JSON
           </Button>
         </div>
       </div>

@@ -20,35 +20,33 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800">
       <AppHeader />
 
-      <main className="max-w-7xl mx-auto px-6 py-12">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-12">
         {!showReport ? (
           <>
-            {/* Mode Selector */}
-            <div className="flex gap-4 mb-8">
+            <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:gap-4">
               <button
                 onClick={() => setMode('manual')}
-                className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+                className={`w-full rounded-lg px-4 py-3 font-semibold transition-all sm:w-auto sm:px-6 ${
                   mode === 'manual'
                     ? 'bg-blue-600 text-white shadow-lg'
-                    : 'bg-white text-slate-900 border-2 border-slate-300 hover:border-blue-600'
+                    : 'border-2 border-slate-300 bg-white text-slate-900 hover:border-blue-600'
                 }`}
               >
-                Manual Form Input
+                Formulaire manuel
               </button>
               <button
                 onClick={() => setMode('ai')}
-                className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+                className={`w-full rounded-lg px-4 py-3 font-semibold transition-all sm:w-auto sm:px-6 ${
                   mode === 'ai'
                     ? 'bg-blue-600 text-white shadow-lg'
-                    : 'bg-white text-slate-900 border-2 border-slate-300 hover:border-blue-600'
+                    : 'border-2 border-slate-300 bg-white text-slate-900 hover:border-blue-600'
                 }`}
               >
-                AI Text Input
+                Saisie IA
               </button>
             </div>
 
-            {/* Content Area */}
-            <div className="bg-white rounded-xl shadow-lg p-8">
+            <div className="rounded-xl bg-white p-4 shadow-lg sm:p-6 md:p-8">
               {mode === 'manual' ? (
                 <ManualFormMode onSubmit={handleFormSubmit} />
               ) : (

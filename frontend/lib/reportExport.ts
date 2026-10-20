@@ -5,7 +5,6 @@ export interface ReportExportData {
   clientName: string;
   location: string;
   date: string;
-  technician: string;
   tasks: { description: string; completed: boolean }[];
   notes?: string;
   executive_summary?: string;
@@ -26,7 +25,7 @@ export interface ReportExportData {
   contacts_site?: string;
   /** Contacts intervention Huawei / Waycon */
   contacts_intervention?: string;
-  /** Signature technicien (data URL image) */
+  /** Signature (data URL image) */
   signature_image?: string | null;
 }
 
@@ -116,7 +115,6 @@ export function buildReportHtmlDoc(data: ReportExportData, reportId: string): st
     <tr><th style="${th}">Lieu d&apos;intervention</th><td style="${border}">${dash(data.location)}</td></tr>
     ${data.port_name?.trim() ? `<tr><th style="${th}">Port (OMMP)</th><td style="${border}">${escapeHtml(data.port_name)}</td></tr>` : ''}
     <tr><th style="${th}">Date</th><td style="${border}">${escapeHtml(formatDateDisplay(data.date))}</td></tr>
-    <tr><th style="${th}">Technicien</th><td style="${border}">${dash(data.technician)}</td></tr>
     <tr><th style="${th}">Contacts sur site</th><td style="${border}">${dash(data.contacts_site)}</td></tr>
     <tr><th style="${th}">Contacts intervention (Huawei / Waycon)</th><td style="${border}">${dash(data.contacts_intervention)}</td></tr>
     <tr><th style="${th}">Objectif de l&apos;intervention</th><td style="${border}">${dash(data.objectif_intervention)}</td></tr>
@@ -132,7 +130,6 @@ export function buildReportHtmlDoc(data: ReportExportData, reportId: string): st
     <tr><th style="${th}">${ommpStyle ? 'SITE / ZONE PORTUAIRE' : 'Location'}</th><td style="${border}">${escapeHtml(data.location)}</td></tr>
     ${data.port_name ? `<tr><th style="${th}">PORT (OMMP)</th><td style="${border}">${escapeHtml(data.port_name)}</td></tr>` : ''}
     <tr><th style="${th}">${ommpStyle ? 'DATE INTERVENTION' : 'Date'}</th><td style="${border}">${escapeHtml(formatDateDisplay(data.date))}</td></tr>
-    <tr><th style="${th}">${ommpStyle ? 'TECHNICIEN' : 'Technician'}</th><td style="${border}">${escapeHtml(data.technician)}</td></tr>
   `;
 
   const tasksTitle = ommpStyle ? 'DÉTAILS DES TÂCHES RÉALISÉES' : 'TASKS PERFORMED';
@@ -506,9 +503,6 @@ export async function downloadReportDocx(
           children: [labelCell('Date'), valueCell(formatDateDisplay(data.date))],
         }),
         new TableRow({
-          children: [labelCell('Technicien'), valueCell(data.technician)],
-        }),
-        new TableRow({
           children: [labelCell('Contacts sur site'), valueCell(dashDoc(data.contacts_site))],
         }),
         new TableRow({
@@ -551,9 +545,6 @@ export async function downloadReportDocx(
           labelCell(L('DATE INTERVENTION', 'Date')),
           valueCell(formatDateDisplay(data.date)),
         ],
-      }),
-      new TableRow({
-        children: [labelCell(L('TECHNICIEN', 'Technician')), valueCell(data.technician)],
       })
     );
   }
